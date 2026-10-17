@@ -6,6 +6,7 @@ An end-to-end Document Question-Answering (RAG) service built from scratch using
 
 ## Project Directory Structure
 
+```text
 AskMyDocs/
 ├── docker-compose.yml            # pgvector/pgvector:pg16 service
 ├── requirements.txt              # Python dependencies
