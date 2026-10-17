@@ -1,0 +1,10 @@
+AskMyDocs Kurumsal İnsan Kaynakları ve İade Politikası Kılavuzu (2026)
+
+1. Uzaktan Çalışma ve Hibrit Model Kuralları
+Şirketimizde mühendislik ve ürün ekipleri haftada 3 gün ofisten (Salı, Çarşamba ve Perşembe), 2 gün ise uzaktan (Pazartesi ve Cuma) çalışmaktadır. Yılda toplam 20 iş günü boyunca dünyanın herhangi bir yerinden ("Work from Anywhere") tam zamanlı uzaktan çalışma hakkı tanınmaktadır. Bu hakkı kullanmak isteyen çalışanların en az 10 iş günü öncesinden İK portalı üzerinden talep oluşturması gerekmektedir.
+
+2. Yıllık İzin ve Eğitim Bütçesi
+Tüm tam zamanlı çalışanlarımızın işe başladıkları ilk yıldan itibaren yılda 18 iş günü ücretli yıllık izin hakkı bulunmaktadır. 5 yılını dolduran kıdemli çalışanlar için bu süre 24 iş gününe çıkmaktadır. Ayrıca her çalışana mesleki gelişim, teknik kitap, uluslararası konferans katılımı ve online sertifika programları için yıllık 1.500 USD eğitim bütçesi tahsis edilir.
+
+3. Yazılım Lisansı ve Ürün İade Politikası
+Kurumsal müşterilerimiz satın aldıkları AskMyDocs Enterprise yazılım lisanslarını, fatura kesim tarihinden itibaren 30 takvim günü içerisinde koşulsuz olarak iade edebilirler. İade talebinin onaylanması için müşteri hesabındaki toplam API çağrısı sayısının 10.000'i aşmamış olması şarttır. Onaylanan iadeler 7 iş günü içerisinde müşterinin ödeme yaptığı banka hesabına veya kredi kartına eksiksiz olarak aktarılır.

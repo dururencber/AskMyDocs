@@ -1,0 +1,59 @@
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    container_name: askmydocs_db
+    restart: always
+    environment:
+      POSTGRES_USER: rag_user
+      POSTGRES_PASSWORD: rag_password
+      POSTGRES_DB: rag_db
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rag_user -d rag_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - rag_network
+
+  backend:
+    build: .
+    container_name: askmydocs_backend
+    restart: always
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql+psycopg://rag_user:rag_password@db:5432/rag_db
+      - SQLALCHEMY_DATABASE_URI=postgresql+psycopg://rag_user:rag_password@db:5432/rag_db
+    env_file:
+      - .env
+    volumes:
+      - ./app:/app/app
+    networks:
+      - rag_network
+
+  frontend:
+    image: nginx:alpine
+    container_name: askmydocs_frontend
+    restart: always
+    ports:
+      - "3000:80"
+    volumes:
+      - ./frontend:/usr/share/nginx/html:ro
+    depends_on:
+      - backend
+    networks:
+      - rag_network
+
+volumes:
+  pgdata:
+
+networks:
+  rag_network:
+    driver: bridge

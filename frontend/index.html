@@ -1,0 +1,1503 @@
+<!DOCTYPE html>
+<html lang="tr" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AskMyDocs — AI Doküman Soru-Cevap (Mini RAG)</title>
+
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
+            mono: ['JetBrains Mono', 'Fira Code', 'monospace'],
+          },
+          colors: {
+            surface: {
+              950: '#07090e',
+              900: '#0c1017',
+              850: '#111722',
+              800: '#161e2e',
+              700: '#1f2a40',
+            }
+          }
+        }
+      }
+    };
+  </script>
+
+  <!-- Google Fonts: Inter & JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <!-- Marked.js (Markdown Parser) -->
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+
+  <!-- Popover Polyfill Feature Detection (modern-web-guidance: persistent-toast-notifications) -->
+  <script type="module">
+    if (!("popover" in HTMLElement.prototype)) {
+      import("https://unpkg.com/@oddbird/popover-polyfill@latest/dist/popover.min.js");
+    }
+  </script>
+
+  <style>
+    /* ==========================================================================
+       1. Modern Dark Mode, Intrinsic Sizing & Brand Form Tokens
+       ========================================================================== */
+    :root {
+      /* Opt-in to intrinsic keyword interpolation for accordions & collapsible cards */
+      interpolate-size: allow-keywords;
+
+      --brand-accent-light: #4f46e5;
+      --brand-accent-dark: #818cf8;
+      --brand-color: var(--brand-accent-dark);
+      --accent-color: var(--brand-accent-dark);
+      --scrollbar-thumb: #28354e;
+      --scrollbar-track: #0c1017;
+
+      @media (prefers-color-scheme: dark) {
+        --accent-color: var(--brand-accent-dark);
+      }
+
+      @supports (color: light-dark(white, black)) {
+        --accent-color: light-dark(var(--brand-accent-light), var(--brand-accent-dark));
+      }
+
+      color-scheme: dark;
+      accent-color: var(--accent-color);
+    }
+
+    body {
+      accent-color: var(--brand-color);
+      background-color: #07090e;
+      color: #e2e8f0;
+      overflow: hidden;
+    }
+
+    pre, code {
+      color-scheme: dark;
+      accent-color: var(--accent-color);
+    }
+
+    /* ==========================================================================
+       2. Custom Scrollbars + WebKit @supports Fallback
+       ========================================================================== */
+    .custom-scroll {
+      scrollbar-width: thin;
+      scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+    }
+
+    @supports not (scrollbar-color: auto) {
+      .custom-scroll::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+      }
+      .custom-scroll::-webkit-scrollbar-thumb {
+        background: var(--scrollbar-thumb);
+        border-radius: 9999px;
+      }
+      .custom-scroll::-webkit-scrollbar-track {
+        background: var(--scrollbar-track);
+      }
+    }
+
+    /* ==========================================================================
+       3. Auto-Growing Prompt Textarea (field-sizing: content + Grid Fallback)
+       ========================================================================== */
+    #chat-input {
+      field-sizing: content;
+      height: auto;
+      width: 100%;
+      min-block-size: 1.75lh;
+      max-block-size: 7lh;
+    }
+
+    @supports not (field-sizing: content) {
+      .growable-textarea {
+        display: grid;
+        width: 100%;
+      }
+      .growable-textarea::after,
+      .growable-textarea > textarea {
+        grid-area: 1 / 1 / 2 / 2;
+        font: inherit;
+        padding: 0.625rem 0.75rem;
+        line-height: 1.5;
+      }
+      .growable-textarea::after {
+        content: attr(data-replicated-value) " ";
+        white-space: pre-wrap;
+        visibility: hidden;
+        max-height: 10.5rem;
+        overflow: hidden;
+      }
+      .growable-textarea > textarea {
+        resize: none;
+        overflow-y: auto;
+        max-height: 10.5rem;
+      }
+    }
+
+    /* ==========================================================================
+       4. Indeterminate Semantic <progress> Loading Spinner
+       ========================================================================== */
+    @property --arc-start {
+      syntax: "<angle>";
+      inherits: false;
+      initial-value: 0deg;
+    }
+    @property --arc-end {
+      syntax: "<angle>";
+      inherits: false;
+      initial-value: 0deg;
+    }
+    @property --progress-dash-animation {
+      syntax: "*";
+      inherits: false;
+      initial-value: , progress-dash 2.4s ease-in-out infinite;
+    }
+
+    progress.loading-spinner:indeterminate::-webkit-progress-bar,
+    progress.loading-spinner:indeterminate::-webkit-progress-value {
+      display: none;
+      background: none;
+    }
+    progress.loading-spinner:indeterminate::-moz-progress-bar {
+      display: none;
+      background: none;
+    }
+
+    progress.loading-spinner:indeterminate {
+      --_from: calc(90deg + var(--arc-start, 0deg));
+      --_to: calc(90deg + var(--arc-end, 160deg));
+      --size: 20px;
+      --thickness: 2.5px;
+      --spinner-color: #818cf8;
+      --track-color: rgba(129, 140, 248, 0.16);
+      --spinner-duration: 1.1s;
+      --_used-spinner-duration: var(--spinner-duration);
+
+      position: relative;
+      display: inline-block;
+      width: var(--size);
+      height: var(--size);
+      border-radius: 50%;
+      appearance: none;
+      border: 0;
+
+      background: conic-gradient(
+          from var(--_from),
+          var(--spinner-color) calc(var(--_to) - var(--_from)),
+          transparent 0
+        )
+        var(--track-color);
+
+      @supports (background-clip: border-area) {
+        background-clip: border-area;
+        border: var(--thickness) solid transparent;
+        background-origin: border-box;
+      }
+
+      @supports not (background-clip: border-area) {
+        --clip-boundary: calc(100% - var(--thickness));
+        mask-image: radial-gradient(
+          farthest-side,
+          transparent var(--clip-boundary),
+          black var(--clip-boundary)
+        );
+        -webkit-mask-image: radial-gradient(
+          farthest-side,
+          transparent var(--clip-boundary),
+          black var(--clip-boundary)
+        );
+        border: 0;
+      }
+
+      animation:
+        progress-spin var(--_used-spinner-duration) linear infinite
+        var(--progress-dash-animation, );
+    }
+
+    @keyframes progress-spin {
+      to { rotate: 1turn; }
+    }
+
+    @keyframes progress-dash {
+      from { --arc-start: 0deg; --arc-end: 10deg; }
+      50%  { --arc-start: 100deg; --arc-end: 340deg; }
+      to   { --arc-start: 360deg; --arc-end: 365deg; }
+    }
+
+    /* ==========================================================================
+       5. Brand-Consistent Range Slider Fallback
+       ========================================================================== */
+    @supports not (accent-color: var(--brand-color)) {
+      input[type="range"] {
+        -webkit-appearance: none;
+        appearance: none;
+        background: transparent;
+      }
+      input[type="range"]::-webkit-slider-runnable-track {
+        width: 100%;
+        height: 6px;
+        background: linear-gradient(to right, var(--brand-color) var(--progress, 50%), #1f2a40 var(--progress, 50%));
+        border-radius: 4px;
+      }
+      input[type="range"]::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        appearance: none;
+        height: 16px;
+        width: 16px;
+        border-radius: 50%;
+        background: var(--brand-color);
+        cursor: pointer;
+        margin-top: -5px;
+      }
+    }
+
+    /* ==========================================================================
+       6. Intrinsic-Size Accordion & Reduced Motion Safety
+       ========================================================================== */
+    details.sources-accordion::details-content {
+      block-size: 0;
+      overflow: hidden;
+      transition: block-size 0.3s ease-out, content-visibility 0.3s ease-out allow-discrete;
+    }
+
+    details.sources-accordion[open]::details-content {
+      block-size: auto;
+    }
+
+    details.sources-accordion > summary {
+      list-style: none;
+    }
+    details.sources-accordion > summary::-webkit-details-marker {
+      display: none;
+    }
+
+    /* ==========================================================================
+       7. Top-Layer Manual Popover Toast Notifications
+       ========================================================================== */
+    #toast-stack {
+      position: fixed;
+      top: 1.25rem;
+      right: 1.25rem;
+      z-index: 9999;
+      display: flex;
+      flex-direction: column;
+      gap: 0.625rem;
+      pointer-events: none;
+    }
+
+    .toast-popover {
+      position: relative;
+      inset: unset;
+      margin: 0;
+      border: 0;
+      padding: 0;
+      background: transparent;
+      pointer-events: auto;
+      opacity: 0;
+      transform: translateY(-8px) scale(0.98);
+      transition:
+        opacity 0.22s ease-out,
+        transform 0.22s ease-out,
+        overlay 0.22s ease-out allow-discrete,
+        display 0.22s ease-out allow-discrete;
+    }
+
+    .toast-popover:is(:popover-open, .\:popover-open) {
+      display: block;
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+
+    .toast-popover + .toast-popover {
+      margin-top: 0.5rem;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      progress.loading-spinner:indeterminate {
+        --_used-spinner-duration: 6s;
+      }
+      details.sources-accordion::details-content,
+      .toast-popover {
+        transition: none !important;
+      }
+    }
+
+    /* ==========================================================================
+       8. Markdown Prose Formatting inside AI Bubbles
+       ========================================================================== */
+    .markdown-body p {
+      margin-bottom: 0.65rem;
+      line-height: 1.65;
+    }
+    .markdown-body p:last-child {
+      margin-bottom: 0;
+    }
+    .markdown-body strong {
+      color: #f8fafc;
+      font-weight: 600;
+    }
+    .markdown-body ul {
+      list-style-type: disc;
+      padding-left: 1.35rem;
+      margin-bottom: 0.65rem;
+    }
+    .markdown-body ol {
+      list-style-type: decimal;
+      padding-left: 1.35rem;
+      margin-bottom: 0.65rem;
+    }
+    .markdown-body li {
+      margin-bottom: 0.25rem;
+    }
+    .markdown-body code {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.82rem;
+      background: rgba(15, 23, 42, 0.85);
+      border: 1px solid rgba(148, 163, 184, 0.2);
+      padding: 0.12rem 0.38rem;
+      border-radius: 0.35rem;
+      color: #a5b4fc;
+    }
+    .markdown-body pre {
+      background: #090d16;
+      border: 1px solid rgba(148, 163, 184, 0.15);
+      border-radius: 0.5rem;
+      padding: 0.85rem;
+      overflow-x: auto;
+      margin-bottom: 0.75rem;
+    }
+    .markdown-body pre code {
+      background: transparent;
+      border: 0;
+      padding: 0;
+      color: #e2e8f0;
+    }
+    .markdown-body blockquote {
+      border-left: 3px solid #6366f1;
+      padding-left: 0.85rem;
+      color: #94a3b8;
+      font-style: italic;
+      margin-bottom: 0.65rem;
+    }
+  </style>
+</head>
+
+<body class="h-screen w-screen flex flex-col md:flex-row bg-surface-950 text-slate-100 antialiased selection:bg-indigo-500/30 selection:text-indigo-200">
+
+  <!-- Top-Layer Toast Stack Container -->
+  <div id="toast-stack" aria-live="polite"></div>
+
+  <!-- ========================================================================
+       SOL PANEL (SIDEBAR): Doküman Yükleme, Doküman Listesi ve RAG Ayarları
+       ======================================================================== -->
+  <aside class="w-full md:w-80 lg:w-96 flex-shrink-0 bg-surface-900 border-b md:border-b-0 md:border-r border-slate-800/80 flex flex-col h-full select-none">
+
+    <!-- Marka Başlığı & Backend Durumu -->
+    <div class="px-5 py-4 border-b border-slate-800/80 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center shadow-lg shadow-indigo-500/20">
+          <i data-lucide="sparkles" class="w-5 h-5 text-white"></i>
+        </div>
+        <div>
+          <h1 class="text-base font-bold tracking-tight text-white flex items-center gap-2">
+            AskMyDocs
+            <span class="text-[10px] font-mono uppercase tracking-wider px-2 py-0.5 rounded-full bg-indigo-500/15 text-indigo-300 border border-indigo-500/30">RAG v1.0</span>
+          </h1>
+          <p class="text-xs text-slate-400">FastAPI &bull; pgvector &bull; OpenAI</p>
+        </div>
+      </div>
+
+      <!-- API Bağlantı Durumu Göstergesi -->
+      <button id="api-status-btn" type="button" title="Backend bağlantısını kontrol et" class="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-slate-800/90 border border-slate-700/70 text-slate-300 hover:border-indigo-500/50 transition">
+        <span id="api-status-dot" class="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span>
+        <span id="api-status-text">Kontrol...</span>
+      </button>
+    </div>
+
+    <!-- Scrollable Sidebar İçeriği -->
+    <div class="flex-1 overflow-y-auto custom-scroll p-4 space-y-5">
+
+      <!-- 1. DOKÜMAN YÜKLEME ALANI (Drag & Drop + Click) -->
+      <section aria-labelledby="upload-heading">
+        <div class="flex items-center justify-between mb-2">
+          <h2 id="upload-heading" class="text-xs font-semibold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+            <i data-lucide="upload-cloud" class="w-3.5 h-3.5 text-indigo-400"></i>
+            Doküman Yükle
+          </h2>
+          <span class="text-[11px] text-slate-400 font-mono">PDF / TXT</span>
+        </div>
+
+        <label
+          id="dropzone"
+          for="file-input"
+          class="group relative flex flex-col items-center justify-center p-5 border-2 border-dashed border-slate-700/80 rounded-2xl bg-surface-850/70 hover:bg-surface-800/80 hover:border-indigo-500/70 transition-all cursor-pointer text-center"
+        >
+          <input id="file-input" type="file" accept=".pdf,.txt,application/pdf,text/plain" class="sr-only" />
+
+          <div id="dropzone-idle" class="flex flex-col items-center">
+            <div class="w-11 h-11 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center mb-2.5 group-hover:scale-105 group-hover:bg-indigo-500/20 transition-transform">
+              <i data-lucide="file-up" class="w-5 h-5 text-indigo-400"></i>
+            </div>
+            <p class="text-xs font-medium text-slate-200">
+              Dosyayı sürükleyin veya <span class="text-indigo-400 underline decoration-indigo-500/50">seçin</span>
+            </p>
+            <p class="text-[11px] text-slate-400 mt-1">
+              Otomatik parçalanır (500/50) ve 1536d vektörlenir
+            </p>
+          </div>
+
+          <!-- Yükleme Sırasında Gösterilen Spinner Durumu -->
+          <div id="dropzone-loading" class="hidden flex-col items-center py-1">
+            <progress aria-label="Dosya yükleniyor ve vektörleniyor" class="loading-spinner mb-2.5" style="--size: 28px; --thickness: 3px;"></progress>
+            <p id="uploading-filename" class="text-xs font-semibold text-indigo-300 truncate max-w-[220px]">dosya.pdf</p>
+            <p class="text-[11px] text-slate-400 mt-0.5">Metin çıkarılıyor &amp; embedding üretiliyor...</p>
+          </div>
+        </label>
+      </section>
+
+      <!-- 2. YÜKLENEN DOKÜMANLAR LİSTESİ & AKTİF DÖKÜMAN SEÇİMİ -->
+      <section aria-labelledby="docs-heading" class="flex flex-col">
+        <div class="flex items-center justify-between mb-2">
+          <h2 id="docs-heading" class="text-xs font-semibold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+            <i data-lucide="folder-kanban" class="w-3.5 h-3.5 text-indigo-400"></i>
+            Yüklenen Dökümanlar
+          </h2>
+          <div class="flex items-center gap-2">
+            <span id="docs-count-badge" class="text-[11px] font-mono px-2 py-0.5 rounded-md bg-slate-800 text-slate-300">0</span>
+            <button id="refresh-docs-btn" type="button" title="Döküman listesini yenile" class="p-1 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition">
+              <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
+            </button>
+          </div>
+        </div>
+
+        <!-- Tüm Dökümanlar (Filtresiz Arama) Seçeneği -->
+        <button
+          id="select-all-docs-btn"
+          type="button"
+          class="w-full mb-2 text-left px-3.5 py-2.5 rounded-xl border transition-all flex items-center justify-between bg-indigo-500/15 border-indigo-500/60 text-white shadow-sm"
+        >
+          <div class="flex items-center gap-2.5 min-w-0">
+            <div class="w-7 h-7 rounded-lg bg-indigo-500/20 flex items-center justify-center text-indigo-300 flex-shrink-0">
+              <i data-lucide="layers" class="w-4 h-4"></i>
+            </div>
+            <div class="truncate">
+              <div class="text-xs font-semibold">Tüm Dökümanlarda Ara</div>
+              <div class="text-[10px] text-slate-400">Global kosinüs benzerlik araması</div>
+            </div>
+          </div>
+          <span id="all-docs-check" class="w-2 h-2 rounded-full bg-indigo-400"></span>
+        </button>
+
+        <!-- Dinamik Döküman Kartları Listesi -->
+        <div id="documents-list" class="space-y-2 max-h-60 overflow-y-auto custom-scroll pr-0.5">
+          <!-- JS tarafından doldurulur -->
+        </div>
+      </section>
+
+      <!-- 3. RAG ARAMA AYARLARI (top_k & similarity_threshold) -->
+      <section aria-labelledby="settings-heading" class="pt-3 border-t border-slate-800/80 space-y-4">
+        <div class="flex items-center justify-between">
+          <h2 id="settings-heading" class="text-xs font-semibold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+            <i data-lucide="sliders-horizontal" class="w-3.5 h-3.5 text-indigo-400"></i>
+            Vektör Arama Parametreleri
+          </h2>
+          <button id="reset-params-btn" type="button" class="text-[11px] text-slate-400 hover:text-indigo-400 transition">
+            Sıfırla
+          </button>
+        </div>
+
+        <!-- Top-K Slider (1 - 10) -->
+        <div class="bg-surface-850/90 border border-slate-800/80 rounded-xl p-3 space-y-2">
+          <div class="flex items-center justify-between">
+            <label for="topk-slider" class="text-xs font-medium text-slate-300 flex items-center gap-1.5">
+              <span>Çekilecek Parça Sayısı (<code class="text-indigo-300 font-mono">top_k</code>)</span>
+            </label>
+            <span id="topk-value-badge" class="text-xs font-mono font-semibold px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">5</span>
+          </div>
+          <input
+            id="topk-slider"
+            type="range"
+            min="1"
+            max="10"
+            step="1"
+            value="5"
+            class="w-full cursor-pointer"
+          />
+          <div class="flex justify-between text-[10px] text-slate-400 font-mono">
+            <span>1 (Dar)</span>
+            <span>5 (Önerilen)</span>
+            <span>10 (Geniş)</span>
+          </div>
+        </div>
+
+        <!-- Similarity Threshold Slider (0.00 - 0.95) -->
+        <div class="bg-surface-850/90 border border-slate-800/80 rounded-xl p-3 space-y-2">
+          <div class="flex items-center justify-between">
+            <label for="threshold-slider" class="text-xs font-medium text-slate-300 flex items-center gap-1.5">
+              <span>Benzerlik Eşiği (<code class="text-indigo-300 font-mono">threshold</code>)</span>
+            </label>
+            <span id="threshold-value-badge" class="text-xs font-mono font-semibold px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">0.30</span>
+          </div>
+          <input
+            id="threshold-slider"
+            type="range"
+            min="0.00"
+            max="0.95"
+            step="0.05"
+            value="0.30"
+            class="w-full cursor-pointer"
+          />
+          <div class="flex justify-between text-[10px] text-slate-400 font-mono">
+            <span>0.00 (Tümü)</span>
+            <span>0.30 (Dengeli)</span>
+            <span>0.95 (Katı)</span>
+          </div>
+        </div>
+
+        <!-- Backend Base URL Ayarı -->
+        <div class="bg-surface-850/90 border border-slate-800/80 rounded-xl p-3 space-y-1.5">
+          <label for="api-base-url" class="text-[11px] font-medium text-slate-400 block">
+            Backend API Base URL
+          </label>
+          <div class="flex items-center gap-1.5">
+            <input
+              id="api-base-url"
+              type="url"
+              value="http://localhost:8000"
+              class="w-full bg-surface-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs font-mono text-slate-200 focus:outline-none focus:border-indigo-500"
+            />
+          </div>
+        </div>
+      </section>
+    </div>
+  </aside>
+
+  <!-- ========================================================================
+       SAĞ PANEL (CHAT / SORU-CEVAP ALANI)
+       ======================================================================== -->
+  <main class="flex-1 flex flex-col h-full bg-surface-950 relative overflow-hidden">
+
+    <!-- Üst Bilgi Barı (Aktif Filtre & Sohbet Temizleme) -->
+    <header class="h-16 px-6 border-b border-slate-800/80 bg-surface-900/60 backdrop-blur-md flex items-center justify-between flex-shrink-0 z-10">
+      <div class="flex items-center gap-3 min-w-0">
+        <div class="w-2.5 h-2.5 rounded-full bg-emerald-400 shadow-sm shadow-emerald-400/50"></div>
+        <div class="min-w-0">
+          <div class="flex items-center gap-2">
+            <span class="text-xs font-medium text-slate-400">Aktif Kapsam:</span>
+            <span id="active-scope-badge" class="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-indigo-500/15 text-indigo-300 border border-indigo-500/30 truncate max-w-xs sm:max-w-md">
+              Tüm Dökümanlar (Genel Arama)
+            </span>
+          </div>
+          <p id="active-doc-uuid-bar" class="text-[11px] font-mono text-slate-400 truncate hidden"></p>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-2">
+        <button
+          id="clear-chat-btn"
+          type="button"
+          class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium text-slate-300 bg-surface-800 hover:bg-slate-800 border border-slate-700/70 transition"
+        >
+          <i data-lucide="trash-2" class="w-3.5 h-3.5 text-slate-400"></i>
+          <span>Sohbeti Temizle</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- Mesajlaşma Akışı (Chat Thread) -->
+    <div id="chat-messages" class="flex-1 overflow-y-auto custom-scroll px-4 sm:px-8 py-6 space-y-6">
+
+      <!-- Karşılama / Boş Durum Ekranı -->
+      <div id="welcome-state" class="max-w-2xl mx-auto my-8 text-center space-y-5">
+        <div class="w-14 h-14 rounded-2xl bg-gradient-to-br from-indigo-500/20 to-violet-500/20 border border-indigo-500/30 flex items-center justify-center mx-auto shadow-xl shadow-indigo-950/50">
+          <i data-lucide="bot" class="w-7 h-7 text-indigo-400"></i>
+        </div>
+        <div class="space-y-2">
+          <h2 class="text-xl font-bold text-white tracking-tight">
+            Dökümanlarınıza Doğrudan Soru Sorun
+          </h2>
+          <p class="text-sm text-slate-400 max-w-lg mx-auto leading-relaxed">
+            Sol panelden bir <strong class="text-slate-200">PDF</strong> veya <strong class="text-slate-200">TXT</strong> dosyası yükleyin. Sorularınız <code class="text-indigo-300 font-mono text-xs">text-embedding-3-small</code> ile vektörlenir, <code class="text-indigo-300 font-mono text-xs">pgvector (&lt;=&gt;)</code> ile en yakın parçalar bulunur ve yalnızca bağlama sadık kalınarak cevaplanır.
+          </p>
+        </div>
+
+        <!-- Örnek Hazır Sorular -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-left max-w-xl mx-auto pt-2">
+          <button type="button" data-sample-question="Yazılım lisansı iade süresi kaç gündür ve iade şartları nelerdir?" class="sample-question-btn group p-3.5 rounded-xl bg-surface-900/90 hover:bg-surface-800 border border-slate-800 hover:border-indigo-500/40 transition text-left">
+            <div class="flex items-center justify-between text-xs font-semibold text-indigo-300 mb-1">
+              <span>İade Politikası</span>
+              <i data-lucide="arrow-up-right" class="w-3.5 h-3.5 opacity-60 group-hover:opacity-100 transition"></i>
+            </div>
+            <p class="text-xs text-slate-300 line-clamp-2">Yazılım lisansı iade süresi kaç gündür ve iade şartları nelerdir?</p>
+          </button>
+
+          <button type="button" data-sample-question="Çalışanların yıllık izin hakkı ve eğitim bütçesi ne kadardır?" class="sample-question-btn group p-3.5 rounded-xl bg-surface-900/90 hover:bg-surface-800 border border-slate-800 hover:border-indigo-500/40 transition text-left">
+            <div class="flex items-center justify-between text-xs font-semibold text-indigo-300 mb-1">
+              <span>İzin &amp; Eğitim Bütçesi</span>
+              <i data-lucide="arrow-up-right" class="w-3.5 h-3.5 opacity-60 group-hover:opacity-100 transition"></i>
+            </div>
+            <p class="text-xs text-slate-300 line-clamp-2">Çalışanların yıllık izin hakkı ve eğitim bütçesi ne kadardır?</p>
+          </button>
+
+          <button type="button" data-sample-question="Uzaktan çalışma (Work from Anywhere) kuralı kaç gündür ve nasıl talep edilir?" class="sample-question-btn group p-3.5 rounded-xl bg-surface-900/90 hover:bg-surface-800 border border-slate-800 hover:border-indigo-500/40 transition text-left">
+            <div class="flex items-center justify-between text-xs font-semibold text-indigo-300 mb-1">
+              <span>Hibrit &amp; Uzaktan Çalışma</span>
+              <i data-lucide="arrow-up-right" class="w-3.5 h-3.5 opacity-60 group-hover:opacity-100 transition"></i>
+            </div>
+            <p class="text-xs text-slate-300 line-clamp-2">Uzaktan çalışma (Work from Anywhere) kuralı kaç gündür ve nasıl talep edilir?</p>
+          </button>
+
+          <button type="button" data-sample-question="Şirketin özel sağlık sigortası hangi hastanelerde geçerlidir?" class="sample-question-btn group p-3.5 rounded-xl bg-surface-900/90 hover:bg-surface-800 border border-slate-800 hover:border-indigo-500/40 transition text-left">
+            <div class="flex items-center justify-between text-xs font-semibold text-amber-300 mb-1">
+              <span>Halüsinasyon Koruma Testi</span>
+              <i data-lucide="shield-check" class="w-3.5 h-3.5 opacity-60 group-hover:opacity-100 transition"></i>
+            </div>
+            <p class="text-xs text-slate-300 line-clamp-2">Şirketin özel sağlık sigortası hangi hastanelerde geçerlidir? (Dökümanda yok)</p>
+          </button>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ======================================================================
+         ALT BAR: Prompt Giriş Alanı (Textarea + Enter Gönderim)
+         ====================================================================== -->
+    <div class="p-4 sm:px-8 sm:pb-6 bg-gradient-to-t from-surface-950 via-surface-950 to-transparent flex-shrink-0">
+      <form id="chat-form" class="max-w-4xl mx-auto relative">
+        <div class="flex items-end gap-2 bg-surface-900 border border-slate-700/80 focus-within:border-indigo-500/80 focus-within:ring-2 focus-within:ring-indigo-500/20 rounded-2xl p-2.5 shadow-2xl transition-all">
+
+          <label for="chat-input" class="sr-only">Dökümanlara sorunuzu yazın</label>
+          <div class="growable-textarea flex-1 min-w-0" data-replicated-value="">
+            <textarea
+              id="chat-input"
+              rows="1"
+              placeholder="Yüklenen dökümanlara bir soru sorun... (Göndermek için Enter, yeni satır için Shift+Enter)"
+              class="bg-transparent text-sm text-slate-100 placeholder-slate-400 focus:outline-none px-2 py-1 custom-scroll"
+            ></textarea>
+          </div>
+
+          <button
+            id="send-button"
+            type="submit"
+            class="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800 disabled:text-slate-500 text-white text-xs font-semibold shadow-lg shadow-indigo-600/25 transition flex-shrink-0"
+          >
+            <span>Sor</span>
+            <i data-lucide="send-horizontal" class="w-4 h-4"></i>
+          </button>
+        </div>
+
+        <div class="flex items-center justify-between px-2 mt-2 text-[11px] text-slate-400">
+          <span>Cevaplar yalnızca yüklenen döküman bağlamına (<code class="font-mono text-slate-300">Context</code>) dayandırılır.</span>
+          <span class="font-mono hidden sm:inline">Enter: Gönder &bull; Shift+Enter: Alt Satır</span>
+        </div>
+      </form>
+    </div>
+
+  </main>
+
+  <!-- ========================================================================
+       JAVASCRIPT UYGULAMA MANTIĞI
+       ======================================================================== -->
+  <script type="module">
+    // ------------------------------------------------------------------------
+    // 1. Durum (State) ve DOM Referansları
+    // ------------------------------------------------------------------------
+    const state = {
+      documents: [],
+      selectedDocumentId: null, // null => Tüm dökümanlar, UUID => Belirli döküman
+      isUploading: false,
+      isAsking: false,
+    };
+
+    const els = {
+      apiBaseUrl: document.getElementById('api-base-url'),
+      apiStatusBtn: document.getElementById('api-status-btn'),
+      apiStatusDot: document.getElementById('api-status-dot'),
+      apiStatusText: document.getElementById('api-status-text'),
+      dropzone: document.getElementById('dropzone'),
+      fileInput: document.getElementById('file-input'),
+      dropzoneIdle: document.getElementById('dropzone-idle'),
+      dropzoneLoading: document.getElementById('dropzone-loading'),
+      uploadingFilename: document.getElementById('uploading-filename'),
+      documentsList: document.getElementById('documents-list'),
+      docsCountBadge: document.getElementById('docs-count-badge'),
+      refreshDocsBtn: document.getElementById('refresh-docs-btn'),
+      selectAllDocsBtn: document.getElementById('select-all-docs-btn'),
+      allDocsCheck: document.getElementById('all-docs-check'),
+      topKSlider: document.getElementById('topk-slider'),
+      topKBadge: document.getElementById('topk-value-badge'),
+      thresholdSlider: document.getElementById('threshold-slider'),
+      thresholdBadge: document.getElementById('threshold-value-badge'),
+      resetParamsBtn: document.getElementById('reset-params-btn'),
+      activeScopeBadge: document.getElementById('active-scope-badge'),
+      activeDocUuidBar: document.getElementById('active-doc-uuid-bar'),
+      clearChatBtn: document.getElementById('clear-chat-btn'),
+      chatMessages: document.getElementById('chat-messages'),
+      welcomeState: document.getElementById('welcome-state'),
+      chatForm: document.getElementById('chat-form'),
+      chatInput: document.getElementById('chat-input'),
+      sendButton: document.getElementById('send-button'),
+      toastStack: document.getElementById('toast-stack'),
+    };
+
+    function getBaseUrl() {
+      return (els.apiBaseUrl.value || 'http://localhost:8000').replace(/\/+$/, '');
+    }
+
+    // ------------------------------------------------------------------------
+    // 2. Güvenli HTML Sanitize & Markdown Render (sanitize-untrusted-html)
+    // ------------------------------------------------------------------------
+    let domPurifyPromise;
+    function loadDOMPurify() {
+      domPurifyPromise ??= import('https://cdn.jsdelivr.net/npm/dompurify@3.1.7/+esm').then(
+        (mod) => mod.default ?? mod
+      );
+      return domPurifyPromise;
+    }
+
+    async function safeSetMarkdownHTML(targetEl, markdownText) {
+      const rawHtml = marked.parse(markdownText || '', { breaks: true, gfm: true });
+      const elements = [
+        'p', 'b', 'i', 'strong', 'em', 'ul', 'ol', 'li',
+        'code', 'pre', 'blockquote', 'h1', 'h2', 'h3', 'h4', 'br', 'hr', 'span'
+      ];
+      const attributes = ['class'];
+
+      if ('setHTML' in Element.prototype) {
+        targetEl.setHTML(rawHtml, { sanitizer: { elements, attributes } });
+      } else {
+        const DOMPurify = await loadDOMPurify();
+        targetEl.innerHTML = DOMPurify.sanitize(rawHtml, {
+          ALLOWED_TAGS: [...elements, '#text'],
+          ALLOWED_ATTR: attributes,
+          ALLOW_ARIA_ATTR: false,
+          ALLOW_DATA_ATTR: false,
+          KEEP_CONTENT: false,
+        });
+      }
+    }
+
+    function escapeHtml(str) {
+      const div = document.createElement('div');
+      div.textContent = str ?? '';
+      return div.innerHTML;
+    }
+
+    // ------------------------------------------------------------------------
+    // 3. Top-Layer Popover Toast Bildirimleri (persistent-toast-notifications)
+    // ------------------------------------------------------------------------
+    let toastCounter = 0;
+    function showToast(message, type = 'info', durationMs = 4200) {
+      toastCounter += 1;
+      const toastId = `toast-item-${toastCounter}`;
+      const toastEl = document.createElement('div');
+      toastEl.id = toastId;
+      toastEl.setAttribute('popover', 'manual');
+      toastEl.className = 'toast-popover';
+
+      const palette = {
+        success: {
+          border: 'border-emerald-500/40',
+          bg: 'bg-surface-900/95',
+          icon: 'check-circle-2',
+          iconColor: 'text-emerald-400',
+        },
+        error: {
+          border: 'border-rose-500/50',
+          bg: 'bg-surface-900/95',
+          icon: 'alert-triangle',
+          iconColor: 'text-rose-400',
+        },
+        info: {
+          border: 'border-indigo-500/40',
+          bg: 'bg-surface-900/95',
+          icon: 'info',
+          iconColor: 'text-indigo-400',
+        },
+      }[type] || {
+        border: 'border-slate-700',
+        bg: 'bg-surface-900/95',
+        icon: 'info',
+        iconColor: 'text-indigo-400',
+      };
+
+      toastEl.innerHTML = `
+        <div class="flex items-start gap-3 px-4 py-3 rounded-xl border ${palette.border} ${palette.bg} backdrop-blur-md shadow-2xl min-w-[270px] max-w-sm text-xs text-slate-100">
+          <i data-lucide="${palette.icon}" class="w-4 h-4 ${palette.iconColor} flex-shrink-0 mt-0.5"></i>
+          <div class="flex-1 leading-relaxed">${escapeHtml(message)}</div>
+          <button
+            type="button"
+            popovertarget="${toastId}"
+            popovertargetaction="hide"
+            aria-label="Bildirimi kapat"
+            class="text-slate-400 hover:text-slate-200 transition p-0.5"
+          >
+            <i data-lucide="x" class="w-3.5 h-3.5"></i>
+          </button>
+        </div>
+      `;
+
+      els.toastStack.appendChild(toastEl);
+      lucide.createIcons({ nodes: [toastEl] });
+
+      if (typeof toastEl.showPopover === 'function') {
+        toastEl.showPopover();
+      } else {
+        toastEl.classList.add(':popover-open');
+      }
+
+      const cleanup = () => {
+        try {
+          if (typeof toastEl.hidePopover === 'function' && toastEl.matches(':popover-open')) {
+            toastEl.hidePopover();
+          }
+        } catch (_) {}
+        setTimeout(() => toastEl.remove(), 250);
+      };
+
+      toastEl.querySelector('button')?.addEventListener('click', cleanup);
+      if (durationMs > 0) {
+        setTimeout(cleanup, durationMs);
+      }
+    }
+
+    // ------------------------------------------------------------------------
+    // 4. Backend Sağlık ve Döküman Listesi Senkronizasyonu
+    // ------------------------------------------------------------------------
+    async function checkBackendHealth() {
+      try {
+        const res = await fetch(`${getBaseUrl()}/health`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        els.apiStatusDot.className = 'w-2 h-2 rounded-full bg-emerald-400';
+        els.apiStatusText.textContent = 'API Aktif';
+        return true;
+      } catch (err) {
+        els.apiStatusDot.className = 'w-2 h-2 rounded-full bg-rose-500';
+        els.apiStatusText.textContent = 'Bağlantı Yok';
+        return false;
+      }
+    }
+
+    async function fetchDocuments() {
+      try {
+        const res = await fetch(`${getBaseUrl()}/api/documents`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        state.documents = Array.isArray(data)
+          ? data.map((d) => ({
+              id: d.id || d.document_id,
+              filename: d.filename,
+              file_type: d.file_type || d.filename?.split('.').pop() || 'txt',
+              chunk_count: d.chunk_count ?? d.total_chunks ?? 0,
+              created_at: d.created_at,
+            }))
+          : [];
+        renderDocumentsList();
+      } catch (err) {
+        renderDocumentsList();
+      }
+    }
+
+    // ------------------------------------------------------------------------
+    // 5. Döküman Kartları Render ve Aktif Döküman Seçimi
+    // ------------------------------------------------------------------------
+    function selectDocument(docId) {
+      state.selectedDocumentId = docId;
+      renderDocumentsList();
+      updateActiveScopeHeader();
+    }
+
+    function updateActiveScopeHeader() {
+      if (!state.selectedDocumentId) {
+        els.activeScopeBadge.textContent = 'Tüm Dökümanlar (Genel Arama)';
+        els.activeDocUuidBar.classList.add('hidden');
+        els.selectAllDocsBtn.className =
+          'w-full mb-2 text-left px-3.5 py-2.5 rounded-xl border transition-all flex items-center justify-between bg-indigo-500/15 border-indigo-500/60 text-white shadow-sm';
+        els.allDocsCheck.className = 'w-2 h-2 rounded-full bg-indigo-400';
+      } else {
+        const doc = state.documents.find((d) => d.id === state.selectedDocumentId);
+        els.activeScopeBadge.textContent = doc ? doc.filename : 'Seçili Döküman';
+        els.activeDocUuidBar.textContent = `document_id: ${state.selectedDocumentId}`;
+        els.activeDocUuidBar.classList.remove('hidden');
+        els.selectAllDocsBtn.className =
+          'w-full mb-2 text-left px-3.5 py-2.5 rounded-xl border transition-all flex items-center justify-between bg-surface-850/70 border-slate-800/90 text-slate-300 hover:bg-surface-800';
+        els.allDocsCheck.className = 'w-2 h-2 rounded-full bg-slate-600';
+      }
+    }
+
+    function renderDocumentsList() {
+      els.docsCountBadge.textContent = String(state.documents.length);
+
+      if (state.documents.length === 0) {
+        els.documentsList.innerHTML = `
+          <div class="p-4 rounded-xl border border-slate-800/80 bg-surface-850/40 text-center space-y-1">
+            <p class="text-xs text-slate-400">Henüz yüklü döküman yok.</p>
+            <p class="text-[11px] text-slate-400">Yukarıdan PDF veya TXT yükleyin.</p>
+          </div>
+        `;
+        return;
+      }
+
+      els.documentsList.innerHTML = state.documents
+        .map((doc) => {
+          const isSelected = state.selectedDocumentId === doc.id;
+          const isPdf = (doc.file_type || '').toLowerCase() === 'pdf';
+          const cardClasses = isSelected
+            ? 'bg-indigo-500/15 border-indigo-500/70 text-white shadow-md shadow-indigo-950/30'
+            : 'bg-surface-850/80 border-slate-800/80 text-slate-300 hover:bg-surface-800 hover:border-slate-700';
+
+          return `
+            <div
+              data-doc-id="${escapeHtml(doc.id)}"
+              class="doc-card group relative rounded-xl border p-3 transition-all cursor-pointer ${cardClasses}"
+            >
+              <div class="flex items-start justify-between gap-2">
+                <div class="flex items-center gap-2.5 min-w-0">
+                  <div class="w-8 h-8 rounded-lg ${
+                    isPdf ? 'bg-rose-500/15 text-rose-400 border border-rose-500/30' : 'bg-sky-500/15 text-sky-400 border border-sky-500/30'
+                  } flex items-center justify-center flex-shrink-0">
+                    <i data-lucide="${isPdf ? 'file-text' : 'file-code'}" class="w-4 h-4"></i>
+                  </div>
+                  <div class="min-w-0">
+                    <p class="text-xs font-semibold truncate text-slate-100" title="${escapeHtml(doc.filename)}">
+                      ${escapeHtml(doc.filename)}
+                    </p>
+                    <div class="flex items-center gap-1.5 mt-0.5">
+                      <span class="text-[10px] font-mono uppercase px-1.5 py-0.2 rounded bg-slate-800 text-slate-300">
+                        ${escapeHtml(doc.file_type)}
+                      </span>
+                      <span class="text-[10px] font-mono text-indigo-300">
+                        ${doc.chunk_count} chunk
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="flex items-center gap-1">
+                  <button
+                    type="button"
+                    data-copy-id="${escapeHtml(doc.id)}"
+                    title="document_id kopyala"
+                    class="copy-doc-id-btn p-1 rounded-lg text-slate-400 hover:text-indigo-300 hover:bg-slate-800/80 transition"
+                  >
+                    <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+                  </button>
+                  <button
+                    type="button"
+                    data-delete-id="${escapeHtml(doc.id)}"
+                    title="Dökümanı sil"
+                    class="delete-doc-btn p-1 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition"
+                  >
+                    <i data-lucide="trash" class="w-3.5 h-3.5"></i>
+                  </button>
+                </div>
+              </div>
+
+              <div class="mt-2 pt-1.5 border-t border-slate-800/70 flex items-center justify-between text-[10px] font-mono text-slate-400">
+                <span class="truncate" title="${escapeHtml(doc.id)}">ID: ${escapeHtml(doc.id)}</span>
+                <span class="${isSelected ? 'text-indigo-300 font-semibold' : 'text-slate-400'}">
+                  ${isSelected ? '● Seçili' : 'Seç'}
+                </span>
+              </div>
+            </div>
+          `;
+        })
+        .join('');
+
+      lucide.createIcons({ nodes: [els.documentsList] });
+
+      // Kart tıklama olayları
+      els.documentsList.querySelectorAll('.doc-card').forEach((card) => {
+        card.addEventListener('click', (e) => {
+          if (e.target.closest('.copy-doc-id-btn') || e.target.closest('.delete-doc-btn')) {
+            return;
+          }
+          const docId = card.getAttribute('data-doc-id');
+          selectDocument(docId);
+        });
+      });
+
+      // ID Kopyalama
+      els.documentsList.querySelectorAll('.copy-doc-id-btn').forEach((btn) => {
+        btn.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          const id = btn.getAttribute('data-copy-id');
+          await navigator.clipboard.writeText(id);
+          showToast(`document_id panoya kopyalandı: ${id.slice(0, 8)}...`, 'info', 2500);
+        });
+      });
+
+      // Döküman Silme
+      els.documentsList.querySelectorAll('.delete-doc-btn').forEach((btn) => {
+        btn.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          const id = btn.getAttribute('data-delete-id');
+          await handleDeleteDocument(id);
+        });
+      });
+    }
+
+    async function handleDeleteDocument(docId) {
+      try {
+        const res = await fetch(`${getBaseUrl()}/api/documents/${docId}`, {
+          method: 'DELETE',
+        });
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.detail || `Silme başarısız (HTTP ${res.status})`);
+        }
+        state.documents = state.documents.filter((d) => d.id !== docId);
+        if (state.selectedDocumentId === docId) {
+          state.selectedDocumentId = null;
+        }
+        renderDocumentsList();
+        updateActiveScopeHeader();
+        showToast('Döküman ve vektör parçaları silindi.', 'success');
+      } catch (err) {
+        showToast(err.message || 'Döküman silinirken hata oluştu.', 'error');
+      }
+    }
+
+    // ------------------------------------------------------------------------
+    // 6. Dosya Yükleme (POST /api/documents/upload)
+    // ------------------------------------------------------------------------
+    async function handleFileUpload(file) {
+      if (!file) return;
+
+      const ext = file.name.split('.').pop()?.toLowerCase();
+      if (!['pdf', 'txt'].includes(ext)) {
+        showToast('Sadece .pdf ve .txt uzantılı dosyalar desteklenmektedir.', 'error');
+        return;
+      }
+
+      state.isUploading = true;
+      els.uploadingFilename.textContent = file.name;
+      els.dropzoneIdle.classList.add('hidden');
+      els.dropzoneLoading.classList.remove('hidden');
+      els.dropzoneLoading.classList.add('flex');
+      els.fileInput.disabled = true;
+
+      const formData = new FormData();
+      formData.append('file', file);
+
+      try {
+        const response = await fetch(`${getBaseUrl()}/api/documents/upload`, {
+          method: 'POST',
+          body: formData,
+        });
+
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(data.detail || `Yükleme hatası (HTTP ${response.status})`);
+        }
+
+        const uploadedDoc = {
+          id: data.id || data.document_id,
+          filename: data.filename || file.name,
+          file_type: data.file_type || ext,
+          chunk_count: data.chunk_count ?? data.total_chunks ?? 0,
+          created_at: data.created_at || new Date().toISOString(),
+        };
+
+        // Listeye ekle ve otomatik olarak aktif döküman seç
+        state.documents = [
+          uploadedDoc,
+          ...state.documents.filter((d) => d.id !== uploadedDoc.id),
+        ];
+        selectDocument(uploadedDoc.id);
+
+        showToast(
+          `"${uploadedDoc.filename}" yüklendi (${uploadedDoc.chunk_count} parça vektörlendi).`,
+          'success'
+        );
+      } catch (err) {
+        showToast(err.message || 'Dosya yüklenirken sunucu hatası oluştu.', 'error');
+      } finally {
+        state.isUploading = false;
+        els.fileInput.value = '';
+        els.fileInput.disabled = false;
+        els.dropzoneLoading.classList.add('hidden');
+        els.dropzoneLoading.classList.remove('flex');
+        els.dropzoneIdle.classList.remove('hidden');
+      }
+    }
+
+    // Drag & Drop Olay Dinleyicileri
+    ['dragenter', 'dragover'].forEach((evtName) => {
+      els.dropzone.addEventListener(evtName, (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        els.dropzone.classList.add('border-indigo-500', 'bg-indigo-500/10');
+      });
+    });
+
+    ['dragleave', 'drop'].forEach((evtName) => {
+      els.dropzone.addEventListener(evtName, (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        els.dropzone.classList.remove('border-indigo-500', 'bg-indigo-500/10');
+      });
+    });
+
+    els.dropzone.addEventListener('drop', (e) => {
+      if (state.isUploading) return;
+      const files = e.dataTransfer?.files;
+      if (files && files.length > 0) {
+        handleFileUpload(files[0]);
+      }
+    });
+
+    els.fileInput.addEventListener('change', (e) => {
+      if (state.isUploading) return;
+      const files = e.target.files;
+      if (files && files.length > 0) {
+        handleFileUpload(files[0]);
+      }
+    });
+
+    // ------------------------------------------------------------------------
+    // 7. Mesajlaşma Akışı ve RAG Soru Sorma (POST /api/rag/ask)
+    // ------------------------------------------------------------------------
+    function scrollToBottom() {
+      els.chatMessages.scrollTo({
+        top: els.chatMessages.scrollHeight,
+        behavior: 'smooth',
+      });
+    }
+
+    function appendUserMessage(questionText, scopeLabel) {
+      if (els.welcomeState) {
+        els.welcomeState.classList.add('hidden');
+      }
+
+      const wrapper = document.createElement('div');
+      wrapper.className = 'flex justify-end';
+      wrapper.innerHTML = `
+        <div class="max-w-2xl flex flex-col items-end gap-1">
+          <div class="px-4 py-3 rounded-2xl rounded-tr-sm bg-gradient-to-br from-indigo-600 to-violet-600 text-white text-sm shadow-lg shadow-indigo-950/40 leading-relaxed whitespace-pre-wrap break-words">${escapeHtml(
+            questionText
+          )}</div>
+          <span class="text-[10px] font-mono text-slate-400 px-1">Kapsam: ${escapeHtml(scopeLabel)}</span>
+        </div>
+      `;
+      els.chatMessages.appendChild(wrapper);
+      scrollToBottom();
+    }
+
+    function appendLoadingBubble() {
+      const loadingEl = document.createElement('div');
+      loadingEl.className = 'flex items-start gap-3.5 max-w-3xl';
+      loadingEl.innerHTML = `
+        <div class="w-8 h-8 rounded-xl bg-indigo-500/15 border border-indigo-500/30 flex items-center justify-center flex-shrink-0 mt-0.5">
+          <progress aria-label="RAG cevabı üretiliyor" class="loading-spinner" style="--size: 18px; --thickness: 2.5px;"></progress>
+        </div>
+        <div class="flex-1 bg-surface-900 border border-slate-800/90 rounded-2xl rounded-tl-sm p-4 space-y-3 shadow-lg">
+          <div class="flex items-center gap-2 text-xs text-indigo-300 font-medium">
+            <span>pgvector kosinüs benzerliği aranıyor ve bağlamdan cevap üretiliyor...</span>
+          </div>
+          <div class="space-y-2 animate-pulse">
+            <div class="h-3 bg-slate-800 rounded w-11/12"></div>
+            <div class="h-3 bg-slate-800 rounded w-4/5"></div>
+            <div class="h-3 bg-slate-800 rounded w-3/5"></div>
+          </div>
+        </div>
+      `;
+      els.chatMessages.appendChild(loadingEl);
+      scrollToBottom();
+      return loadingEl;
+    }
+
+    function getSimilarityBadgeStyle(score) {
+      if (score >= 0.65) {
+        return 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30';
+      }
+      if (score >= 0.45) {
+        return 'bg-indigo-500/15 text-indigo-300 border-indigo-500/30';
+      }
+      return 'bg-amber-500/15 text-amber-300 border-amber-500/30';
+    }
+
+    async function appendAssistantResponse(data) {
+      const sources = Array.isArray(data.sources) ? data.sources : [];
+      const wrapper = document.createElement('div');
+      wrapper.className = 'flex items-start gap-3.5 max-w-4xl';
+
+      const sourcesHtml = sources.length
+        ? `
+          <details class="sources-accordion mt-4 rounded-xl border border-slate-800/90 bg-surface-950/70 overflow-hidden">
+            <summary class="cursor-pointer select-none px-4 py-2.5 flex items-center justify-between text-xs font-semibold text-slate-300 hover:bg-slate-800/50 transition">
+              <div class="flex items-center gap-2">
+                <i data-lucide="book-open-check" class="w-4 h-4 text-indigo-400"></i>
+                <span>Kullanılan Kaynaklar (Sources)</span>
+                <span class="px-2 py-0.5 rounded-full text-[11px] font-mono bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+                  ${sources.length} Parça
+                </span>
+              </div>
+              <span class="text-[11px] text-slate-400 font-mono flex items-center gap-1">
+                <span>Göster / Gizle</span>
+                <i data-lucide="chevron-down" class="w-3.5 h-3.5"></i>
+              </span>
+            </summary>
+
+            <div class="p-3.5 border-t border-slate-800/80 space-y-2.5">
+              ${sources
+                .map((src, idx) => {
+                  const simScore = Number(src.similarity_score ?? 0);
+                  const simPercent = (simScore * 100).toFixed(1);
+                  const distScore = Number(src.cosine_distance ?? (1 - simScore)).toFixed(4);
+                  const badgeStyle = getSimilarityBadgeStyle(simScore);
+                  const pageBadge = src.page_number
+                    ? `<span class="px-2 py-0.5 rounded bg-slate-800 text-slate-300">Sayfa ${escapeHtml(String(src.page_number))}</span>`
+                    : '';
+
+                  return `
+                    <div class="p-3 rounded-xl bg-surface-900/90 border border-slate-800/90 space-y-2">
+                      <div class="flex flex-wrap items-center justify-between gap-2">
+                        <div class="flex items-center gap-2 min-w-0">
+                          <span class="text-xs font-bold text-indigo-400 font-mono">#${idx + 1}</span>
+                          <span class="text-xs font-semibold text-slate-200 truncate" title="${escapeHtml(src.document_name)}">
+                            ${escapeHtml(src.document_name || 'Döküman')}
+                          </span>
+                          <span class="text-[11px] font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-300">
+                            Chunk #${escapeHtml(String(src.chunk_index ?? 0))}
+                          </span>
+                          ${pageBadge}
+                        </div>
+
+                        <div class="flex items-center gap-1.5 font-mono text-[11px]">
+                          <span class="px-2 py-0.5 rounded-md border font-semibold ${badgeStyle}">
+                            Benzerlik: %${simPercent} (${simScore.toFixed(4)})
+                          </span>
+                          <span class="px-2 py-0.5 rounded-md bg-slate-800/90 text-slate-400 border border-slate-700/60" title="pgvector kosinüs mesafesi (<=>)">
+                            &lt;=&gt; ${distScore}
+                          </span>
+                        </div>
+                      </div>
+
+                      <p class="text-xs text-slate-300 leading-relaxed whitespace-pre-wrap font-sans bg-surface-950/80 p-2.5 rounded-lg border border-slate-800/60">${escapeHtml(
+                        src.content
+                      )}</p>
+
+                      <div class="flex items-center justify-between text-[10px] font-mono text-slate-400">
+                        <span>document_id: ${escapeHtml(String(src.document_id || ''))}</span>
+                        <span>chunk_id: ${escapeHtml(String(src.chunk_id || ''))}</span>
+                      </div>
+                    </div>
+                  `;
+                })
+                .join('')}
+            </div>
+          </details>
+        `
+        : `
+          <div class="mt-3 px-3 py-2 rounded-xl border border-amber-500/20 bg-amber-500/5 text-xs text-amber-300 flex items-center gap-2">
+            <i data-lucide="info" class="w-4 h-4 flex-shrink-0"></i>
+            <span>Belirlenen benzerlik eşiği (threshold) üzerinde eşleşen kaynak parça bulunamadı.</span>
+          </div>
+        `;
+
+      wrapper.innerHTML = `
+        <div class="w-8 h-8 rounded-xl bg-gradient-to-br from-indigo-500/20 to-violet-500/20 border border-indigo-500/30 flex items-center justify-center flex-shrink-0 mt-0.5">
+          <i data-lucide="sparkles" class="w-4 h-4 text-indigo-400"></i>
+        </div>
+        <div class="flex-1 min-w-0 bg-surface-900 border border-slate-800/90 rounded-2xl rounded-tl-sm p-4 sm:p-5 shadow-xl">
+          <div class="markdown-body text-sm text-slate-200"></div>
+          ${sourcesHtml}
+        </div>
+      `;
+
+      els.chatMessages.appendChild(wrapper);
+      const markdownContainer = wrapper.querySelector('.markdown-body');
+      await safeSetMarkdownHTML(markdownContainer, data.answer || '');
+      lucide.createIcons({ nodes: [wrapper] });
+      scrollToBottom();
+    }
+
+    async function handleAskSubmit(questionText) {
+      const trimmed = questionText.trim();
+      if (!trimmed || state.isAsking) return;
+
+      state.isAsking = true;
+      els.sendButton.disabled = true;
+
+      const selectedDoc = state.documents.find((d) => d.id === state.selectedDocumentId);
+      const scopeLabel = selectedDoc ? selectedDoc.filename : 'Tüm Dökümanlar';
+
+      appendUserMessage(trimmed, scopeLabel);
+      els.chatInput.value = '';
+      if (els.chatInput.parentNode?.dataset) {
+        els.chatInput.parentNode.dataset.replicatedValue = '';
+      }
+
+      const loadingBubble = appendLoadingBubble();
+
+      const payload = {
+        question: trimmed,
+        top_k: Number(els.topKSlider.value),
+        similarity_threshold: Number(els.thresholdSlider.value),
+      };
+      if (state.selectedDocumentId) {
+        payload.document_id = state.selectedDocumentId;
+      }
+
+      try {
+        const res = await fetch(`${getBaseUrl()}/api/rag/ask`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Accept: 'application/json',
+          },
+          body: JSON.stringify(payload),
+        });
+
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(data.detail || `RAG sorgu hatası (HTTP ${res.status})`);
+        }
+
+        loadingBubble.remove();
+        await appendAssistantResponse(data);
+      } catch (err) {
+        loadingBubble.remove();
+        showToast(err.message || 'Soru yanıtlanırken bir hata oluştu.', 'error');
+      } finally {
+        state.isAsking = false;
+        els.sendButton.disabled = false;
+        els.chatInput.focus();
+      }
+    }
+
+    // ------------------------------------------------------------------------
+    // 8. IME-Safe Enter Gönderimi ve Form Olayları (ime-safe-enter-submit)
+    // ------------------------------------------------------------------------
+    let lastCompositionEndAt = null;
+
+    els.chatInput.addEventListener('compositionend', (event) => {
+      lastCompositionEndAt = event.timeStamp;
+    });
+
+    els.chatInput.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' && !event.shiftKey) {
+        event.preventDefault();
+
+        // IME karakter dönüşümü aktifse veya Safari keyCode 229 ise gönderimi engelle
+        if (event.isComposing || event.keyCode === 229) {
+          return;
+        }
+
+        // Safari ters olay sırası hatasına karşı 50ms penceresi kontrolü
+        if (
+          lastCompositionEndAt !== null &&
+          Math.abs(event.timeStamp - lastCompositionEndAt) < 50
+        ) {
+          return;
+        }
+
+        els.chatForm.requestSubmit();
+      }
+    });
+
+    // field-sizing: content desteklemeyen tarayıcılar için Grid fallback senkronizasyonu
+    if (!CSS.supports('field-sizing', 'content')) {
+      els.chatInput.addEventListener('input', () => {
+        els.chatInput.parentNode.dataset.replicatedValue = els.chatInput.value;
+      });
+    }
+
+    els.chatForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      handleAskSubmit(els.chatInput.value);
+    });
+
+    // ------------------------------------------------------------------------
+    // 9. Yardımcı Kontroller ve Slider Dinleyicileri
+    // ------------------------------------------------------------------------
+    function updateSliderProgress(slider) {
+      const min = Number(slider.min || 0);
+      const max = Number(slider.max || 100);
+      const val = Number(slider.value || 0);
+      const pct = ((val - min) / (max - min)) * 100;
+      slider.style.setProperty('--progress', `${pct}%`);
+    }
+
+    els.topKSlider.addEventListener('input', (e) => {
+      els.topKBadge.textContent = e.target.value;
+      updateSliderProgress(e.target);
+    });
+
+    els.thresholdSlider.addEventListener('input', (e) => {
+      els.thresholdBadge.textContent = Number(e.target.value).toFixed(2);
+      updateSliderProgress(e.target);
+    });
+
+    els.resetParamsBtn.addEventListener('click', () => {
+      els.topKSlider.value = '5';
+      els.topKBadge.textContent = '5';
+      els.thresholdSlider.value = '0.30';
+      els.thresholdBadge.textContent = '0.30';
+      updateSliderProgress(els.topKSlider);
+      updateSliderProgress(els.thresholdSlider);
+      showToast('Arama parametreleri varsayılan değerlere döndürüldü.', 'info', 2500);
+    });
+
+    els.selectAllDocsBtn.addEventListener('click', () => {
+      selectDocument(null);
+    });
+
+    els.refreshDocsBtn.addEventListener('click', async () => {
+      await checkBackendHealth();
+      await fetchDocuments();
+      showToast('Döküman listesi güncellendi.', 'info', 2000);
+    });
+
+    els.apiStatusBtn.addEventListener('click', async () => {
+      const ok = await checkBackendHealth();
+      if (ok) {
+        await fetchDocuments();
+        showToast('Backend bağlantısı aktif.', 'success', 2500);
+      } else {
+        showToast('Backend sunucusuna ulaşılamadı (http://localhost:8000).', 'error');
+      }
+    });
+
+    els.clearChatBtn.addEventListener('click', () => {
+      Array.from(els.chatMessages.children).forEach((child) => {
+        if (child.id !== 'welcome-state') {
+          child.remove();
+        }
+      });
+      els.welcomeState.classList.remove('hidden');
+      showToast('Sohbet geçmişi temizlendi.', 'info', 2200);
+    });
+
+    document.querySelectorAll('.sample-question-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const q = btn.getAttribute('data-sample-question');
+        if (q) {
+          els.chatInput.value = q;
+          handleAskSubmit(q);
+        }
+      });
+    });
+
+    // Başlangıç Kurulumu
+    lucide.createIcons();
+    updateSliderProgress(els.topKSlider);
+    updateSliderProgress(els.thresholdSlider);
+    checkBackendHealth();
+    fetchDocuments();
+  </script>
+</body>
+</html>
