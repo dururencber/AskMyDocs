@@ -13,14 +13,14 @@ AskMyDocs/
 ├── sample_company_policy.txt     # Sample document for testing
 └── app/
     ├── __init__.py
-    ├── main.py                   # FastAPI application entrypoint & lifespan DB initialization
+    ├── main.py                   # FastAPI application entrypoint and lifespan DB init
     ├── core/
     │   ├── __init__.py
-    │   ├── config.py             # Environment variables & RAG hyperparameters
+    │   ├── config.py             # Environment variables and RAG hyperparameters
     │   └── database.py           # SQLAlchemy engine, get_db, and HNSW index setup
     ├── models/
     │   ├── __init__.py
-    │   ├── domain.py             # Document & DocumentChunk SQLAlchemy models
+    │   ├── domain.py             # Document and DocumentChunk SQLAlchemy models
     │   └── schemas.py            # Pydantic Request/Response schemas
     ├── services/
     │   ├── __init__.py
