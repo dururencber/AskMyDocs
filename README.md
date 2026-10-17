@@ -95,4 +95,4 @@ curl -X POST "http://localhost:8000/api/rag/ask" \
   -d '{
     "question": "What is the company meal card daily allowance limit?"
   }'
-EOF
+
