@@ -1,4 +1,3 @@
-cat << 'EOF' > README.md
 # AskMyDocs - Mini RAG (Retrieval-Augmented Generation) API
 
 An end-to-end Document Question-Answering (RAG) service built from scratch using **Python (FastAPI)**, **PostgreSQL + pgvector (HNSW Cosine Index)**, and **OpenAI (`text-embedding-3-small` & `gpt-4o-mini`)**.
@@ -95,4 +94,3 @@ curl -X POST "http://localhost:8000/api/rag/ask" \
   -d '{
     "question": "What is the company meal card daily allowance limit?"
   }'
-
